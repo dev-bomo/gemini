@@ -1,14 +1,14 @@
 import React from "react";
-import Api from "../dataaccess/Api";
-import { Login } from "../model/Login";
-import { ChangeSet } from "../model/ChangeSet";
-import { Table, Button, Dropdown, FormControl } from 'react-bootstrap';
+import Api from "../../dataaccess/Api";
+import { ChangeSet } from "../../model/ChangeSet";
+import { Table, Button, Dropdown, Form } from 'react-bootstrap';
 import styles from './View.module.scss';
-import { ApiSort } from "../dataaccess/ApiOptions";
-import { nameof } from "../model/Util";
+import { ApiSort } from "../../dataaccess/ApiOptions";
+import { nameof } from "../../model/Util";
+import _ from 'lodash';
+import { areEqual } from "../../core/Util";
 
 interface ViewState {
-    login: Login | null;
     changeSets: ChangeSet[] | null;
     page: number;
     limit: number;
@@ -24,9 +24,7 @@ export default class View extends React.Component<ViewProps, ViewState> {
 
     constructor(props: ViewProps) {
         super(props);
-        this.areEqual = this.areEqual.bind(this);
         this.state = {
-            login: null,
             changeSets: null,
             page: 1,
             limit: 10,
@@ -36,41 +34,38 @@ export default class View extends React.Component<ViewProps, ViewState> {
 
     async componentDidMount() {
         let { api }: ViewProps = this.props;
-        let ret: Login[] = await api.login('UsernameFull', 'full');
 
-        if (ret.length > 0) {
-            this.setState({ login: ret[0] });
-            let cs: ChangeSet[] = await api.getData(ret[0].token, {
-                pagination: { page: this.state.page, limit: this.state.limit },
-                sort: [{ propName: nameof<ChangeSet>('entityName'), isAsc: true }]
-            });
+        let cs: ChangeSet[] = await api.getData({
+            pagination: { page: this.state.page, limit: this.state.limit },
+            sort: [{ propName: nameof<ChangeSet>('name'), isAsc: true }]
+        });
 
-            if (cs.length > 0) {
-                this.setState({ changeSets: cs });
-            } else {
-
-            }
+        if (cs.length > 0) {
+            this.setState({ changeSets: cs });
         } else {
-            // some error handling
+            // error handling
         }
     }
 
-    private areEqual(sf: ApiSort[], sf2: ApiSort[]): boolean {
-        let areEqual = true;
-        sf.forEach((sf: ApiSort) => {
-            if (sf2.indexOf(sf) === -1) {
-                areEqual = false;
-            }
-        })
-
-        return areEqual;
+    private onSort(fieldName: string): void {
+        let { sortFields }: ViewState = this.state
+        let sfIndex: number = sortFields.findIndex((sf: ApiSort) => sf.propName === fieldName);
+        if (sfIndex === -1) {
+            let sfl: ApiSort[] = [...sortFields];
+            sfl.push({ propName: fieldName, isAsc: false });
+            this.setState({ sortFields: sfl });
+        } else {
+            let sfl: ApiSort[] = _.cloneDeep(sortFields);
+            sfl[sfIndex].isAsc = !sfl[sfIndex].isAsc;
+            this.setState({ sortFields: sfl });
+        }
     }
 
     async componentDidUpdate(prevProps: ViewProps, prevState: ViewState) {
-        let { page, login, limit, sortFields }: ViewState = this.state;
-        if ((prevState.page !== page || prevState.limit !== limit || this.areEqual(sortFields, prevState.sortFields) === false) && login) {
-            let cs: ChangeSet[] = await this.props.api.getData(login.token, {
-                pagination: { page: page, limit: limit },
+        let { page, limit, sortFields }: ViewState = this.state;
+        if ((prevState.page !== page || prevState.limit !== limit || areEqual(sortFields, prevState.sortFields) === false)) {
+            let cs: ChangeSet[] = await this.props.api.getData({
+                pagination: { page, limit },
                 sort: sortFields
             });
 
@@ -83,28 +78,17 @@ export default class View extends React.Component<ViewProps, ViewState> {
     }
 
     render(): JSX.Element {
-        let { login, changeSets, page, limit, sortFields }: ViewState = this.state;
+        let { changeSets, page, limit }: ViewState = this.state;
         return (<div>
             {changeSets && changeSets.length > 0 &&
                 <div>
                     <Table striped bordered hover>
                         <thead>
                             <tr>
-                                <th>#</th>
-                                <th><Button onClick={() => {
-                                    let sfi: number = sortFields.findIndex((sf: ApiSort) => sf.propName === nameof<ChangeSet>('entityName'));
-                                    if (sfi === -1) {
-                                        let sfl: ApiSort[] = [...sortFields];
-                                        sfl.push({ propName: nameof<ChangeSet>('entityName'), isAsc: true });
-                                        this.setState({ sortFields: sfl });
-                                    } else {
-                                        let sfl: ApiSort[] = [...sortFields];
-                                        sfl[sfi].isAsc = !sfl[sfi].isAsc;
-                                        this.setState({ sortFields: sfl });
-                                    }
-                                }} variant='link'>Name</Button></th>
-                                <th>IsDeleted</th>
-                                <th>Form</th>
+                                <th style={{ width: '60px' }}>#</th>
+                                <th><Button onClick={() => { this.onSort(nameof<ChangeSet>('name')); }} variant='link'>Name</Button></th>
+                                <th style={{ width: '80px' }}><Button onClick={() => { this.onSort(nameof<ChangeSet>('isDeleted')); }} variant='link'>IsDeleted</Button></th>
+                                <th><Button onClick={() => { this.onSort(nameof<ChangeSet>('forms')); }} variant='link'>Form</Button></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -112,7 +96,7 @@ export default class View extends React.Component<ViewProps, ViewState> {
                                 <tr key={'cs' + (page * limit + index)}>
                                     <td>{(page - 1) * limit + index + 1}</td>
                                     <td>{changeSet.name}</td>
-                                    <td>{changeSet.isDeleted}</td>
+                                    <td><Form.Check readOnly type='checkbox' checked={changeSet.isDeleted}></Form.Check></td>
                                     <td>{changeSet.forms && changeSet.forms.length > 0 && changeSet.forms[0].name}</td>
                                 </tr>
                             )}
